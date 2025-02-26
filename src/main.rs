@@ -42,7 +42,7 @@ use std::env;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::mpsc::{self, TryRecvError};
 use std::thread;
 use std::time::Duration;
 
@@ -53,6 +53,13 @@ enum ImageSize {
     MegaSmall,
     Idle,
     Talking,
+}
+
+// Add enum for tracking idle animation state
+enum IdleState {
+    MainFrame,      // First frame (default expression)
+    BlinkFrame1,    // Blink animation frame 1
+    BlinkFrame2,    // Blink animation frame 2
 }
 
 fn main() -> Result<()> {
@@ -117,18 +124,28 @@ fn main() -> Result<()> {
     ];
     let mut color_index = 0;
 
+    // Add idle animation state tracking
+    let mut idle_state = IdleState::MainFrame;
+    let mut idle_timer = std::time::Instant::now();
+    
+    // Random hold time for main idle frame (0.5 to 5 seconds)
+    let mut idle_hold_time = Duration::from_millis(
+        rng.gen_range(500..5000)
+    );
+    
+    // Time between blink frames (120ms)
+    let blink_frame_time = Duration::from_millis(120);
+
     // Add flags for play state and current vector type
     let mut is_playing = false;
     let mut last_play_time = std::time::Instant::now();
-    let play_interval = Duration::from_millis(80); // Cycle every second
+    let mut play_interval = Duration::from_millis(80);  // Make this mutable
     
     // Track current vector mode (idle or talking)
     let mut current_mode = if matches!(image_size, ImageSize::Talking) {
         "talking"
-    } else if matches!(image_size, ImageSize::Idle) {
-        "idle"
     } else {
-        "normal" // Default mode
+        "idle" // Default to idle mode instead of normal
     };
 
     // Setup communication channel
@@ -178,10 +195,17 @@ fn main() -> Result<()> {
                     "switch_idle" => {
                         // Switch to idle vector
                         current_mode = "idle";
+                        // Reset idle animation state
+                        idle_state = IdleState::MainFrame;
+                        idle_timer = std::time::Instant::now();
+                        idle_hold_time = Duration::from_millis(rng.gen_range(500..5000));
                     },
                     "switch_talking" => {
                         // Switch to talking vector
                         current_mode = "talking";
+                        // Stop idle animation automatically when talking
+                        is_playing = true;
+                        last_play_time = std::time::Instant::now();
                     },
                     "switch_normal" => {
                         // Switch to normal vector
@@ -198,14 +222,62 @@ fn main() -> Result<()> {
             }
         }
 
-        // Auto-play logic - cycle to next image if playing and interval has elapsed
-        // would be better if play interval was randomized between 80 and 120 ms every time
-        if is_playing && last_play_time.elapsed() >= play_interval {
-            // Generate a random number within the safe range
+        // Handle idle animation logic
+        if current_mode == "idle" {
+            // In idle mode, we manage a special animation sequence
+            match idle_state {
+                IdleState::MainFrame => {
+                    // Main frame is shown for a random duration
+                    if idle_timer.elapsed() >= idle_hold_time {
+                        // Switch to first blink frame
+                        idle_state = IdleState::BlinkFrame1;
+                        idle_timer = std::time::Instant::now();
+                        
+                        // Set first blink frame - use direct assignment instead of dereferencing
+                        idle_current_picture = get_idle_vector()[1]; // Assuming frame 2 is at index 1
+                    } else {
+                        // Ensure we're showing the main idle frame
+                        idle_current_picture = get_idle_vector()[0]; // Main frame at index 0
+                    }
+                },
+                IdleState::BlinkFrame1 => {
+                    // First blink frame is shown for a fixed duration
+                    if idle_timer.elapsed() >= blink_frame_time {
+                        // Switch to second blink frame
+                        idle_state = IdleState::BlinkFrame2;
+                        idle_timer = std::time::Instant::now();
+                        
+                        // Set second blink frame
+                        idle_current_picture = get_idle_vector()[2]; // Assuming frame 3 is at index 2
+                    }
+                },
+                IdleState::BlinkFrame2 => {
+                    // Second blink frame is shown for a fixed duration
+                    if idle_timer.elapsed() >= blink_frame_time {
+                        // Switch back to main frame and reset the cycle
+                        idle_state = IdleState::MainFrame;
+                        idle_timer = std::time::Instant::now();
+                        
+                        // Generate a new random hold time for the main frame
+                        idle_hold_time = Duration::from_millis(rng.gen_range(500..5000));
+                        
+                        // Set back to main frame
+                        idle_current_picture = get_idle_vector()[0];
+                    }
+                }
+            }
+        }
+
+        // Auto-play logic - only applicable for talking animation
+        if current_mode == "talking" && is_playing && last_play_time.elapsed() >= play_interval {
+            // Generate a random interval between 80-120ms for natural variation
+            let next_interval = Duration::from_millis(rng.gen_range(80..121));
+            play_interval = next_interval;
+            
+            // Generate a random number within the safe range for talking animation
             random_number = rng.gen_range(0..min_vector_length);
-            update_all_images(&mut current_picture, &mut small_current_picture, 
-                             &mut mega_small_current_picture, &mut idle_current_picture,
-                             &mut talking_current_picture, random_number);
+            talking_current_picture = get_talking_vector()[random_number];
+            
             last_play_time = std::time::Instant::now();
         }
 
@@ -294,10 +366,17 @@ fn main() -> Result<()> {
                     // Switch to idle vector with 'i'
                     KeyCode::Char('i') => {
                         current_mode = "idle";
+                        // Reset idle animation state
+                        idle_state = IdleState::MainFrame;
+                        idle_timer = std::time::Instant::now();
+                        idle_hold_time = Duration::from_millis(rng.gen_range(500..5000));
                     },
                     // Switch to talking vector with 't'
                     KeyCode::Char('t') => {
                         current_mode = "talking";
+                        // Talking animation should auto-play
+                        is_playing = true;
+                        last_play_time = std::time::Instant::now();
                     },
                     // Switch to normal vector with 'm'
                     KeyCode::Char('m') => {
