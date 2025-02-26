@@ -8,7 +8,7 @@ fn main() -> std::io::Result<()> {
     
     if args.len() < 2 {
         println!("Usage: {} <command>", args[0]);
-        println!("Available commands: next, color, quit");
+        println!("Available commands: next, color, play, stop, switch_idle, switch_talking, switch_normal, quit");
         return Ok(());
     }
     
@@ -17,7 +17,7 @@ fn main() -> std::io::Result<()> {
     
     // Validate command
     match command.as_str() {
-        "next" | "color" | "quit" => {
+        "next" | "color" | "play" | "stop" | "switch_idle" | "switch_talking" | "switch_normal" | "quit" => {
             // Write command to the control file
             let mut file = File::create(path)?;
             file.write_all(command.as_bytes())?;
@@ -25,7 +25,7 @@ fn main() -> std::io::Result<()> {
         },
         _ => {
             println!("Unknown command: {}", command);
-            println!("Available commands: next, color, quit");
+            println!("Available commands: next, color, play, stop, switch_idle, switch_talking, switch_normal, quit");
         }
     }
     

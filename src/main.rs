@@ -117,6 +117,20 @@ fn main() -> Result<()> {
     ];
     let mut color_index = 0;
 
+    // Add flags for play state and current vector type
+    let mut is_playing = false;
+    let mut last_play_time = std::time::Instant::now();
+    let play_interval = Duration::from_millis(80); // Cycle every second
+    
+    // Track current vector mode (idle or talking)
+    let mut current_mode = if matches!(image_size, ImageSize::Talking) {
+        "talking"
+    } else if matches!(image_size, ImageSize::Idle) {
+        "idle"
+    } else {
+        "normal" // Default mode
+    };
+
     // Setup communication channel
     let (tx, rx) = mpsc::channel();
     
@@ -128,6 +142,13 @@ fn main() -> Result<()> {
         watch_for_commands(comms_path, tx);
     });
 
+    // Before the main loop, calculate the minimum vector length
+    let min_vector_length = get_image_vector().len()
+        .min(get_small_image_vector().len())
+        .min(get_mega_small_image_vector().len())
+        .min(get_idle_vector().len())
+        .min(get_talking_vector().len());
+
     // TODO main loop (All the terminal things happen here)
     loop {
         // Check for commands from other processes
@@ -135,17 +156,36 @@ fn main() -> Result<()> {
             Ok(command) => {
                 match command.as_str() {
                     "next" => {
-                        // Same as pressing 'n'
-                        random_number = rng.gen_range(0..get_image_vector().len());
-                        current_picture = get_image_vector()[random_number];
-                        small_current_picture = get_small_image_vector()[random_number];
-                        mega_small_current_picture = get_mega_small_image_vector()[random_number];
-                        idle_current_picture = get_idle_vector()[random_number];
-                        talking_current_picture = get_talking_vector()[random_number];
+                        // Generate a random number within the safe range
+                        random_number = rng.gen_range(0..min_vector_length);
+                        update_all_images(&mut current_picture, &mut small_current_picture, 
+                                         &mut mega_small_current_picture, &mut idle_current_picture,
+                                         &mut talking_current_picture, random_number);
                     },
                     "color" => {
                         // Same as pressing 'p'
                         color_index = (color_index + 1) % colors.len();
+                    },
+                    "play" => {
+                        // Start automatically cycling through images
+                        is_playing = true;
+                        last_play_time = std::time::Instant::now();
+                    },
+                    "stop" => {
+                        // Stop automatically cycling through images
+                        is_playing = false;
+                    },
+                    "switch_idle" => {
+                        // Switch to idle vector
+                        current_mode = "idle";
+                    },
+                    "switch_talking" => {
+                        // Switch to talking vector
+                        current_mode = "talking";
+                    },
+                    "switch_normal" => {
+                        // Switch to normal vector
+                        current_mode = "normal";
                     },
                     "quit" => break,
                     _ => {} // Unknown command
@@ -156,6 +196,17 @@ fn main() -> Result<()> {
                 // The sender has disconnected - this shouldn't normally happen
                 eprintln!("Command channel disconnected");
             }
+        }
+
+        // Auto-play logic - cycle to next image if playing and interval has elapsed
+        // would be better if play interval was randomized between 80 and 120 ms every time
+        if is_playing && last_play_time.elapsed() >= play_interval {
+            // Generate a random number within the safe range
+            random_number = rng.gen_range(0..min_vector_length);
+            update_all_images(&mut current_picture, &mut small_current_picture, 
+                             &mut mega_small_current_picture, &mut idle_current_picture,
+                             &mut talking_current_picture, random_number);
+            last_play_time = std::time::Instant::now();
         }
 
         // Draw the main UI, and we a closure, where the main "variable" is frame
@@ -193,39 +244,25 @@ fn main() -> Result<()> {
                 .block(Block::default().borders(Borders::ALL).border_style(current_style))
                 .alignment(Alignment::Center);
 
-            // Render the appropriate widget based on selected image size or terminal dimensions
-            match image_size {
-                ImageSize::MegaSmall => {
-                    frame.render_widget(
-                        mega_small_banner_widget,
-                        centered_rect(frame.size(), 100, 100),
-                    );
-                },
-                ImageSize::Small => {
-                    frame.render_widget(
-                        small_banner_widget, 
-                        centered_rect(frame.size(), 100, 100)
-                    );
-                },
-                ImageSize::Normal => {
-                    frame.render_widget(
-                        banner_widget, 
-                        centered_rect(frame.size(), 100, 100)
-                    );
-                },
-                ImageSize::Idle => {
-                    frame.render_widget(
-                        idle_banner_widget, 
-                        centered_rect(frame.size(), 100, 100)
-                    );
-                },
-                ImageSize::Talking => {
-                    frame.render_widget(
-                        talking_banner_widget, 
-                        centered_rect(frame.size(), 100, 100)
-                    );
-                },
-            }
+            // Select the appropriate widget based on the current mode first,
+            // falling back to image_size if mode is normal
+            let widget_to_render = match current_mode {
+                "idle" => &idle_banner_widget,
+                "talking" => &talking_banner_widget,
+                _ => match image_size {
+                    ImageSize::MegaSmall => &mega_small_banner_widget,
+                    ImageSize::Small => &small_banner_widget,
+                    ImageSize::Idle => &idle_banner_widget,
+                    ImageSize::Talking => &talking_banner_widget,
+                    ImageSize::Normal => &banner_widget,
+                }
+            };
+
+            // Render the selected widget
+            frame.render_widget(
+                widget_to_render.clone(),
+                centered_rect(frame.size(), 100, 100),
+            );
         })?;
 
         // Handle events
@@ -237,17 +274,34 @@ fn main() -> Result<()> {
                     // In case you press c, the wallpaper will change randomly
                     // using our pictures vector, and the random number generator
                     KeyCode::Char('n') => {
-                        // random_number = rng.gen_range(0..get_image_vector().len());
-                        random_number = rng.gen_range(0..get_talking_vector().len());
-                        current_picture = get_image_vector()[9];
-                        small_current_picture = get_small_image_vector()[random_number];
-                        mega_small_current_picture = get_mega_small_image_vector()[random_number];
-                        idle_current_picture = get_idle_vector()[1];
-                        talking_current_picture = get_talking_vector()[random_number];
+                        // Generate a random number within the safe range
+                        random_number = rng.gen_range(0..min_vector_length);
+                        update_all_images(&mut current_picture, &mut small_current_picture, 
+                                         &mut mega_small_current_picture, &mut idle_current_picture,
+                                         &mut talking_current_picture, random_number);
                     },
                     // Change to the next color when 'p' is pressed
                     KeyCode::Char('p') => {
                         color_index = (color_index + 1) % colors.len();
+                    },
+                    // Toggle play/pause with the space key
+                    KeyCode::Char(' ') => {
+                        is_playing = !is_playing;
+                        if is_playing {
+                            last_play_time = std::time::Instant::now();
+                        }
+                    },
+                    // Switch to idle vector with 'i'
+                    KeyCode::Char('i') => {
+                        current_mode = "idle";
+                    },
+                    // Switch to talking vector with 't'
+                    KeyCode::Char('t') => {
+                        current_mode = "talking";
+                    },
+                    // Switch to normal vector with 'm'
+                    KeyCode::Char('m') => {
+                        current_mode = "normal";
                     },
                     _ => {}
                 }
@@ -313,4 +367,38 @@ fn watch_for_commands(path: &Path, sender: mpsc::Sender<String>) {
         // Sleep to avoid busy waiting
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+// Helper function to update all images
+fn update_all_images(
+    current_picture: &mut &'static str,
+    small_current_picture: &mut &'static str,
+    mega_small_current_picture: &mut &'static str,
+    idle_current_picture: &mut &'static str,
+    talking_current_picture: &mut &'static str,
+    index: usize,
+) {
+    // Get lengths of all vectors
+    let normal_len = get_image_vector().len();
+    let small_len = get_small_image_vector().len();
+    let mega_small_len = get_mega_small_image_vector().len();
+    let idle_len = get_idle_vector().len();
+    let talking_len = get_talking_vector().len();
+    
+    // Find the smallest length
+    let min_length = normal_len
+        .min(small_len)
+        .min(mega_small_len)
+        .min(idle_len)
+        .min(talking_len);
+    
+    // Make sure index is within bounds for all vectors
+    let safe_index = index % min_length;
+    
+    // Update all images with the safe index
+    *current_picture = get_image_vector()[safe_index];
+    *small_current_picture = get_small_image_vector()[safe_index];
+    *mega_small_current_picture = get_mega_small_image_vector()[safe_index];
+    *idle_current_picture = get_idle_vector()[safe_index];
+    *talking_current_picture = get_talking_vector()[safe_index];
 }
