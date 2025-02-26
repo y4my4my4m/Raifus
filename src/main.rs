@@ -10,6 +10,12 @@ use small_image_vector::get_small_image_vector;
 mod mega_small_image_vector;
 use mega_small_image_vector::get_mega_small_image_vector;
 
+mod idle_vector;
+use idle_vector::get_idle_vector;
+
+mod talking_vector;
+use talking_vector::get_talking_vector;
+
 // The library to generate random number
 use rand::Rng;
 
@@ -45,6 +51,8 @@ enum ImageSize {
     Normal,
     Small,
     MegaSmall,
+    Idle,
+    Talking,
 }
 
 fn main() -> Result<()> {
@@ -54,6 +62,8 @@ fn main() -> Result<()> {
         match args[1].to_lowercase().as_str() {
             "small" => ImageSize::Small,
             "megasmall" | "mega-small" | "mega_small" => ImageSize::MegaSmall,
+            "idle" => ImageSize::Idle,
+            "talking" => ImageSize::Talking,
             _ => ImageSize::Normal,
         }
     } else {
@@ -78,6 +88,12 @@ fn main() -> Result<()> {
     // Initialize the mega small image vector image
     let mut mega_small_current_picture = get_mega_small_image_vector()[0];
 
+    // Initialize the idle vector image
+    let mut idle_current_picture = get_idle_vector()[0];
+
+    // Initialize the talking vector image
+    let mut talking_current_picture = get_talking_vector()[0];
+
     // We initialize our random number generator and random_number
     let mut rng = rand::thread_rng();
     let mut random_number;
@@ -91,6 +107,13 @@ fn main() -> Result<()> {
         Color::Blue,
         Color::Magenta,
         Color::Cyan,
+        Color::White,
+        Color::LightBlue,
+        Color::LightGreen,
+        Color::LightCyan,
+        Color::LightRed,
+        Color::LightMagenta,
+        Color::LightYellow,
     ];
     let mut color_index = 0;
 
@@ -117,6 +140,8 @@ fn main() -> Result<()> {
                         current_picture = get_image_vector()[random_number];
                         small_current_picture = get_small_image_vector()[random_number];
                         mega_small_current_picture = get_mega_small_image_vector()[random_number];
+                        idle_current_picture = get_idle_vector()[random_number];
+                        talking_current_picture = get_talking_vector()[random_number];
                     },
                     "color" => {
                         // Same as pressing 'p'
@@ -144,6 +169,8 @@ fn main() -> Result<()> {
             let picture = Paragraph::new(current_picture).style(current_style);
             let small_picture = Paragraph::new(small_current_picture).style(current_style);
             let mega_small_picture = Paragraph::new(mega_small_current_picture).style(current_style);
+            let idle_picture = Paragraph::new(idle_current_picture).style(current_style);
+            let talking_picture = Paragraph::new(talking_current_picture).style(current_style);
 
             // Create widgets with borders for each image size
             let banner_widget = picture
@@ -155,6 +182,14 @@ fn main() -> Result<()> {
                 .alignment(Alignment::Center);
 
             let mega_small_banner_widget = mega_small_picture
+                .block(Block::default().borders(Borders::ALL).border_style(current_style))
+                .alignment(Alignment::Center);
+
+            let idle_banner_widget = idle_picture
+                .block(Block::default().borders(Borders::ALL).border_style(current_style))
+                .alignment(Alignment::Center);
+
+            let talking_banner_widget = talking_picture
                 .block(Block::default().borders(Borders::ALL).border_style(current_style))
                 .alignment(Alignment::Center);
 
@@ -177,7 +212,19 @@ fn main() -> Result<()> {
                         banner_widget, 
                         centered_rect(frame.size(), 100, 100)
                     );
-                }
+                },
+                ImageSize::Idle => {
+                    frame.render_widget(
+                        idle_banner_widget, 
+                        centered_rect(frame.size(), 100, 100)
+                    );
+                },
+                ImageSize::Talking => {
+                    frame.render_widget(
+                        talking_banner_widget, 
+                        centered_rect(frame.size(), 100, 100)
+                    );
+                },
             }
         })?;
 
@@ -190,10 +237,13 @@ fn main() -> Result<()> {
                     // In case you press c, the wallpaper will change randomly
                     // using our pictures vector, and the random number generator
                     KeyCode::Char('n') => {
-                        random_number = rng.gen_range(0..get_image_vector().len());
-                        current_picture = get_image_vector()[random_number];
+                        // random_number = rng.gen_range(0..get_image_vector().len());
+                        random_number = rng.gen_range(0..get_talking_vector().len());
+                        current_picture = get_image_vector()[9];
                         small_current_picture = get_small_image_vector()[random_number];
                         mega_small_current_picture = get_mega_small_image_vector()[random_number];
+                        idle_current_picture = get_idle_vector()[1];
+                        talking_current_picture = get_talking_vector()[random_number];
                     },
                     // Change to the next color when 'p' is pressed
                     KeyCode::Char('p') => {
